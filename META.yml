@@ -19,6 +19,8 @@ no_index:
   directory:
     - inc
     - t
+recommends:
+  Net::STF::Client: 0
 requires:
   Class::Accessor::Lite: 0
   HTTP::Date: 0
@@ -28,4 +30,4 @@ requires:
 resources:
   license: http://dev.perl.org/licenses/
   repository: git://github.com/stf-storage/stf-dispatcher-psgi.git
-version: 1.01
+version: 1.02
