@@ -1,11 +1,12 @@
 package STF::Dispatcher::PSGI;
 use strict;
-our $VERSION = '1.00';
+our $VERSION = '1.01';
 use Carp ();
 use HTTP::Date ();
 use Plack::Request;
 use Plack::Middleware::HTTPExceptions;
 use Scalar::Util ();
+use STF::Dispatcher::PSGI::HTTPException;
 use Class::Accessor::Lite
     rw => [ qw(impl) ]
 ;
@@ -15,6 +16,7 @@ use constant +{
     STF_REPLICATION_HEADER_DEPRECATED => 'X-Replication-Count',
     STF_RECURSIVE_DELETE_HEADER       => 'X-STF-Recursive-Delete',
     STF_CONSISTENCY_HEADER            => "X-STF-Consistency",
+    # XXX This below is should be deprecated. don't use
     STF_FORCE_MASTER_HEADER           => "X-STF-Force-MasterDB",
     STF_DELETED_OBJECTS_HEADER        => "X-STF-Deleted-Objects",
     STF_DEFAULT_REPLICATION_COUNT     => 2,
@@ -186,12 +188,6 @@ sub delete_object {
             return $req->new_response(500, ["Content-Type" => "text/plain"], ["Failed to delete bucket " . $bucket_name]);
         }
 
-        if ( my $klass = Scalar::Util::blessed($ret) ) {
-            if ($klass->isa('Plack::Response') ) {
-                return $ret;
-            }
-        }
-
         return $req->new_response( 204, [], [] );
     }
 
@@ -236,11 +232,6 @@ sub get_object {
     if (! $object) {
         return $req->new_response( 404, [], [ "Failed to get object " . $req->path ] );
     }
-    if ( my $klass = Scalar::Util::blessed($object) ) {
-        if ($klass->isa('Plack::Response') ) {
-            return $object;
-        }
-    }
 
     my @headers;
     if ( my $ct = $object->can('content_type') ) {
@@ -277,12 +268,6 @@ sub modify_object {
         request     => $req,
     } );
 
-    if ( my $klass = Scalar::Util::blessed($ret) ) {
-        if ($klass->isa('Plack::Response') ) {
-            return $ret;
-        }
-    }
-
     return $req->new_response(204, [], []);
 }
 
@@ -306,9 +291,9 @@ STF::Dispatcher::PSGI - Pluggable STF Dispatcher Interface
 
 STF::Dispatcher::PSGI implements the basic STF Protocol (http://stf-storage.github.com) dispatcher component. It does not know how to actually store or retrieve data, so you must implement that portion yourself. 
 
-The reason this exists is mainly to allow you to testing systems that interact with STF servers. For example, setting up the main L<STF|STF implementation> is quite a pain if all you want to do is to test your application, but with this module, you can easily create a dummy STF dispatcher.
+The reason this exists is mainly to allow you to testing systems that interact with STF servers. For example, setting up the main STF implementation is quite a pain if all you want to do is to test your application, but with this module, you can easily create a dummy STF dispatcher.
 
-For example, you can use STF::Dispatcher::Impl::Memory (which stores all data in a has in memory) for your tests:
+For example, you can use STF::Dispatcher::Impl::Hash (which stores all data in a has in memory) for your tests:
 
     # in your stf.psgi
     use STF::Dispatcher::PSGI;
@@ -338,7 +323,7 @@ Of course, this is not only useful for testing, but it allows you to create a ST
 
 As described elsewhere, this module by itself DOES NOT work as a real STF server. This module will parse the request and extract the required data from that request, but has no idea how to actually use it. You must therefore provide it with an "implementation".
 
-The simplest implementation is provided with this distribution: STF::Dispatcher::Impl::Memory. This implementation simply puts all the objects in an in-memory hash. See L<STF|STF> for a heavy duty example.
+The simplest implementation is provided with this distribution: STF::Dispatcher::Impl::Hash. This implementation simply puts all the objects in an in-memory hash. See L<STF|STF> for a heavy duty example.
 
 You can choose to create your own STF implementation. In that case, you need to implement list of methods described later.
 
