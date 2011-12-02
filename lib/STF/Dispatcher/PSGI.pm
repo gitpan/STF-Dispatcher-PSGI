@@ -1,6 +1,6 @@
 package STF::Dispatcher::PSGI;
 use strict;
-our $VERSION = '1.03';
+our $VERSION = '1.04';
 use Carp ();
 use HTTP::Date ();
 use Plack::Request;
@@ -128,7 +128,11 @@ sub create_object {
     $suffix ||= 'dat';
 
     my $input = $req->input;
-    $input->seek(0, 0);
+    if ( my $code = $input->can('rewind') ) {
+        $code->( $input );
+    } elsif ( my $code = $input->can('seek') ) {
+        $code->( $input, 0, 0 );
+    }
 
     my %ext_args;
     if ($req->content_type) {
