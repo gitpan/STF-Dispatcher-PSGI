@@ -1,6 +1,6 @@
 package STF::Dispatcher::PSGI;
 use strict;
-our $VERSION = '1.04';
+our $VERSION = '1.05';
 use Carp ();
 use HTTP::Date ();
 use Plack::Request;
@@ -54,8 +54,14 @@ sub handle_psgi {
     } elsif ($method eq 'PUT') {
         my $cl = $env->{CONTENT_LENGTH} || 0;
         if ( $cl == 0 ) {
+            if (STF_DEBUG) {
+                print STDERR "[Dispatcher] Content-Length = 0, creating bucket\n";
+            }
             $res = $self->create_bucket( $req );
         } else {
+            if (STF_DEBUG) {
+                print STDERR "[Dispatcher] Content-Length > 0, creating object\n";
+            }
             $res = $self->create_object( $req );
         }
     } elsif ($method eq 'DELETE') {
@@ -73,7 +79,7 @@ sub parse_names {
     my ($self, $req) = @_;
     if ( $req->path !~ m{^/([^/]+)(?:/(.+)$)?} ) {
         if (STF_DEBUG) {
-            warn "Could not parse bucket/object name from " . $req->path;
+            print STDERR "[Dispatcher] Could not parse bucket/object name from " . $req->path . "\n";
         }
         return ();
     }
@@ -128,9 +134,10 @@ sub create_object {
     $suffix ||= 'dat';
 
     my $input = $req->input;
-    if ( my $code = $input->can('rewind') ) {
+    my $code;
+    if ( $code = $input->can('rewind') ) {
         $code->( $input );
-    } elsif ( my $code = $input->can('seek') ) {
+    } elsif ( $code = $input->can('seek') ) {
         $code->( $input, 0, 0 );
     }
 
