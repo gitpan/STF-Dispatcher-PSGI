@@ -26,9 +26,10 @@ requires:
   Class::Accessor::Lite: 0
   HTTP::Date: 0
   Plack: 0
+  Plack::Middleware::Header: 0
   Plack::Request: 0
   Scalar::Util: 0
 resources:
   license: http://dev.perl.org/licenses/
   repository: git://github.com/stf-storage/stf-dispatcher-psgi.git
-version: 1.06
+version: 1.07
