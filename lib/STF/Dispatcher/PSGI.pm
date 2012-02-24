@@ -1,6 +1,6 @@
 package STF::Dispatcher::PSGI;
 use strict;
-our $VERSION = '1.07';
+our $VERSION = '1.08';
 use Carp ();
 use HTTP::Date ();
 use Plack::Request;
@@ -19,6 +19,7 @@ use constant +{
     # XXX This below is should be deprecated. don't use
     STF_FORCE_MASTER_HEADER           => "X-STF-Force-MasterDB",
     STF_DELETED_OBJECTS_HEADER        => "X-STF-Deleted-Objects",
+    STF_MOVE_OBJECT_HEADER            => "X-STF-Move-Destination",
     STF_DEFAULT_REPLICATION_COUNT     => 2,
 };
 
@@ -27,7 +28,7 @@ sub new {
 
     my $impl = $args{impl} or
         Carp::croak( "Required parameter 'impl' not specified" );
-    foreach my $method (qw(create_bucket get_bucket delete_bucket create_object get_object delete_object delete_bucket modify_object is_valid_object)) {
+    foreach my $method (qw(create_bucket get_bucket delete_bucket create_object get_object delete_object delete_bucket modify_object rename_object is_valid_object)) {
         $impl->can( $method ) or
             Carp::croak("$impl does not implement $method");
     }
@@ -75,6 +76,8 @@ sub handle_psgi {
         $res = $self->delete_object( $req );
     } elsif ($method eq 'POST') {
         $res = $self->modify_object( $req );
+    } elsif ($method eq 'MOVE') {
+        $res = $self->rename_object( $req );
     } else {
         $res = $req->new_response(400, [ "Content-Type" => "text/plain" ], [ "Bad Request" ]);
     }
@@ -83,8 +86,8 @@ sub handle_psgi {
 }
 
 sub parse_names {
-    my ($self, $req) = @_;
-    if ( $req->path !~ m{^/([^/]+)(?:/(.+)$)?} ) {
+    my ($self, $path) = @_;
+    if ( $path !~ m{^/([^/]+)(?:/(.+)$)?} ) {
         if (STF_DEBUG) {
             print STDERR "[Dispatcher] Could not parse bucket/object name from given path\n";
         }
@@ -96,7 +99,7 @@ sub parse_names {
 sub create_bucket {
     my ($self, $req) = @_;
 
-    my ($bucket_name, $object_name) = $self->parse_names( $req );
+    my ($bucket_name, $object_name) = $self->parse_names( $req->path );
     if ( $object_name ) {
         return $req->new_response( 400, [], [ "Bad bucket name $bucket_name/$object_name" ] );
     }
@@ -117,19 +120,21 @@ sub create_bucket {
         return $req->new_response( 500, [], [ "Failed to create bucket" ] );
     }
 
-    return $req->new_response( 201, [], [ "Created $bucket_name" ] );
+    return $req->new_response( 201, [], [ "Created bucket" ] );
 }
 
 sub create_object {
     my ($self, $req) = @_;
 
     # find the appropriate bucket
-    my ($bucket_name, $object_name) = $self->parse_names( $req );
+    my ($bucket_name, $object_name) = $self->parse_names( $req->path );
     my $bucket = $self->impl->get_bucket( {
         bucket_name => $bucket_name,
         request     => $req
     } );
+
     if (! $bucket) {
+        # XXX Should be 403?
         return $req->new_response(500, ["Content-Type" => "text/plain"], [ "Failed to find bucket" ] );
     }
     if (! $object_name) {
@@ -176,7 +181,7 @@ sub delete_object {
     my ($self, $req) = @_;
 
     # find the appropriate bucket
-    my ($bucket_name, $object_name) = $self->parse_names( $req );
+    my ($bucket_name, $object_name) = $self->parse_names( $req->path );
     my $bucket = $self->impl->get_bucket( {
         bucket_name => $bucket_name,
         request     => $req
@@ -192,11 +197,6 @@ sub delete_object {
     # if there's no object_name, then this is a request to delete
     # the bucket, not an object
     if ( ! $object_name ) {
-        my $bucket = $self->impl->get_bucket( {
-            bucket_name => $bucket_name,
-            request     => $req,
-        } );
-
         my $ret = $self->impl->delete_bucket( {
             bucket    => $bucket,
             recursive => $req->header( STF_RECURSIVE_DELETE_HEADER ) || 0,
@@ -225,14 +225,14 @@ sub delete_object {
     } )) {
         return $req->new_response( 204, [], [] );
     } else {
-        return $req->new_response( 500, [ "Content-Type" ], [ "Failed to delete  object" ] );
+        return $req->new_response( 500, [ "Content-Type" => "text/plain" ], [ "Failed to delete object" ] );
     }
 }
 
 sub get_object {
     my ($self, $req) = @_;
     # find the appropriate bucket
-    my ($bucket_name, $object_name) = $self->parse_names( $req );
+    my ($bucket_name, $object_name) = $self->parse_names( $req->path );
     my $bucket = $self->impl->get_bucket( {
         bucket_name => $bucket_name,
         request     => $req
@@ -268,13 +268,22 @@ sub get_object {
 sub modify_object {
     my ($self, $req) = @_;
 
-    my ($bucket_name, $object_name) = $self->parse_names( $req );
+    my ($bucket_name, $object_name) = $self->parse_names( $req->path );
     my $bucket = $self->impl->get_bucket( {
         bucket_name => $bucket_name,
         request     => $req
     } );
     if (! $bucket) {
         return $req->new_response(500, ["Content-Type" => "text/plain"], [ "Failed to find bucket" ] );
+    }
+
+    my $is_valid = $self->impl->is_valid_object( {
+        bucket      => $bucket,
+        object_name => $object_name,
+        request     => $req,
+    });
+    if (! $is_valid) {
+        return $req->new_response(404, [], [ "No such object" ]);
     }
 
     my $ret = $self->impl->modify_object( {
@@ -286,7 +295,64 @@ sub modify_object {
         request     => $req,
     } );
 
-    return $req->new_response(204, [], []);
+    if ($ret) {
+        return $req->new_response(204, [], []);
+    } else {
+        return $req->new_response(500, ["Content-Type" => "text/plain"], [ "Failed to modify object" ]);
+    }
+}
+
+sub rename_object {
+    my ($self, $req) = @_;
+
+    # source 
+    my ($bucket_name, $object_name) = $self->parse_names( $req->path );
+    my $bucket = $self->impl->get_bucket( {
+        bucket_name => $bucket_name,
+        request     => $req
+    } );
+    if (! $bucket) {
+       # XXX should be 403?
+        return $req->new_response(500, ["Content-Type" => "text/plain"], [ "Failed to find source bucket" ] );
+    }
+
+    my $is_valid = $self->impl->is_valid_object( {
+        bucket      => $bucket,
+        object_name => $object_name,
+        request     => $req,
+    });
+    if (! $is_valid) {
+        return $req->new_response(404, [], [ "No such source object" ]);
+    }
+
+    
+    my $destination = $req->header( STF_MOVE_OBJECT_HEADER );
+    my ($dest_bucket_name, $dest_object_name) = $self->parse_names( $destination );
+    my $dest_bucket;
+    if ( $dest_bucket_name eq $bucket_name ) {
+        $dest_bucket = $bucket
+    } else {
+        $dest_bucket = $self->impl->get_bucket( {
+            bucket_name => $dest_bucket_name,
+            request     => $req
+        } );
+        if (! $dest_bucket) {
+           # XXX should be 403?
+            return $req->new_response(500, ["Content-Type" => "text/plain"], [ "Failed to find source bucket" ] );
+        }
+    }
+
+    my $rv = $self->impl->rename_object( {
+        source_bucket           => $bucket,
+        source_object_name      => $object_name,
+        destination_bucket      => $dest_bucket,
+        destination_object_name => $dest_object_name,
+    } );
+
+    if (! $rv) {
+        return $req->new_response( 500, [], [ "Failed to create object" ] );
+    }
+    return $req->new_response( 201, [], [ "Created " . $req->path ] );
 }
 
 1;
