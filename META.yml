@@ -32,4 +32,4 @@ requires:
 resources:
   license: http://dev.perl.org/licenses/
   repository: git://github.com/stf-storage/stf-dispatcher-psgi.git
-version: 1.08
+version: 1.09
