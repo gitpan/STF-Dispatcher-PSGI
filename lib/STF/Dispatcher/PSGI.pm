@@ -1,6 +1,6 @@
 package STF::Dispatcher::PSGI;
 use strict;
-our $VERSION = '1.10';
+our $VERSION = '1.11';
 use Carp ();
 use HTTP::Date ();
 use Plack::Request;
@@ -228,7 +228,7 @@ sub get_object {
         request     => $req
     } );
     if (! $bucket) {
-        return $req->new_response(500, ["Content-Type" => "text/plain"], [ "Failed to find bucket" ] );
+        return $req->new_response(404, ["Content-Type" => "text/plain"], [ "Failed to find bucket" ] );
     }
 
     my $object = $self->impl->get_object( {
