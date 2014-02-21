@@ -11,7 +11,7 @@ configure_requires:
   CPAN::Meta::Prereqs: 0
   Module::Build: 0.38
 dynamic_config: 0
-generated_by: 'Minilla/v0.4.2, CPAN::Meta::Converter version 2.120921'
+generated_by: 'Minilla/v0.8.0, CPAN::Meta::Converter version 2.132140'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -26,28 +26,26 @@ no_index:
     - eg
     - examples
     - author
+    - builder
 provides:
   STF::Dispatcher::Impl::File:
     file: lib/STF/Dispatcher/Impl/File.pm
-    version: 0
   STF::Dispatcher::Impl::Hash:
     file: lib/STF/Dispatcher/Impl/Hash.pm
-    version: 0
   STF::Dispatcher::PSGI:
     file: lib/STF/Dispatcher/PSGI.pm
-    version: 1.11
+    version: 1.12
   STF::Dispatcher::PSGI::HTTPException:
     file: lib/STF/Dispatcher/PSGI/HTTPException.pm
-    version: 0
   STF::Dispatcher::Test:
     file: lib/STF/Dispatcher/Test.pm
-    version: 0
 recommends:
   Net::STF::Client: 0
 requires:
   Class::Accessor::Lite: 0
   HTTP::Date: 0
   Plack: 0
+  Plack::MIME: 0
   Plack::Middleware::Header: 0
   Plack::Request: 0
   Scalar::Util: 0
@@ -55,6 +53,6 @@ resources:
   bugtracker: https://github.com/stf-storage/stf-dispatcher-psgi/issues
   homepage: https://github.com/stf-storage/stf-dispatcher-psgi
   repository: git://github.com/stf-storage/stf-dispatcher-psgi.git
-version: 1.11
+version: 1.12
 x_contributors:
   - 'Daisuke Maki <lestrrat+github@gmail.com>'

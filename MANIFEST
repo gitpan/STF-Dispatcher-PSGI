@@ -9,6 +9,7 @@ lib/STF/Dispatcher/Impl/Hash.pm
 lib/STF/Dispatcher/PSGI.pm
 lib/STF/Dispatcher/PSGI/HTTPException.pm
 lib/STF/Dispatcher/Test.pm
+minil.toml
 t/001_basic.t
 t/002_net_stf.t
 META.yml
